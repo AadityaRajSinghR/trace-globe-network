@@ -91,7 +91,7 @@ const Index = () => {
     });
   };
 
-  const { startTraceroute, isConnected } = useSocket({
+  const { startTraceroute, stopTraceroute, isConnected } = useSocket({
     onHopDiscovered: handleHopDiscovered,
     onHopLocationUpdated: handleHopLocationUpdated,
     onTracerouteStarted: handleTracerouteStarted,
@@ -107,6 +107,11 @@ const Index = () => {
         variant: "destructive",
       });
       return;
+    }
+
+    // Stop any existing traceroute first
+    if (isTracing) {
+      stopTraceroute();
     }
 
     setTargetHost(target);

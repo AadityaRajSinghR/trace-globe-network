@@ -64,8 +64,15 @@ export const useSocket = ({
     }
   };
 
+  const stopTraceroute = () => {
+    if (socketRef.current) {
+      socketRef.current.emit('stop-traceroute');
+    }
+  };
+
   return {
     startTraceroute,
+    stopTraceroute,
     isConnected: socketRef.current?.connected || false,
   };
 };
