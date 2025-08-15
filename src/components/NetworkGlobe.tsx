@@ -72,17 +72,174 @@ const NetworkGlobe = ({ hops, isTracing, targetHost }: NetworkGlobeProps) => {
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Create Earth globe
+    // Create Earth globe with texture
     const globeGeometry = new THREE.SphereGeometry(5, 64, 64);
+    
+    // Load Earth texture from a URL
+    const textureLoader = new THREE.TextureLoader();
+    
+    // Multiple Earth texture options (prioritized list)
+    const earthTextureUrls = [
+      'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg',
+      'https://cdn.jsdelivr.net/gh/vasturiano/three-globe/example/img/earth-blue-marble.jpg',
+      'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg',
+      'https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg'
+    ];
+    
+    let textureIndex = 0;
+    
+    const loadEarthTexture = () => {
+      if (textureIndex >= earthTextureUrls.length) {
+        console.warn('All Earth texture URLs failed, using fallback');
+        createFallbackTexture();
+        return;
+      }
+      
+      const earthTexture = textureLoader.load(
+        earthTextureUrls[textureIndex],
+        // onLoad callback
+        () => {
+          console.log(`Earth texture loaded successfully from: ${earthTextureUrls[textureIndex]}`);
+          globeMaterial.map = earthTexture;
+          globeMaterial.needsUpdate = true;
+        },
+        // onProgress callback
+        undefined,
+        // onError callback - try next URL
+        () => {
+          console.warn(`Failed to load Earth texture from: ${earthTextureUrls[textureIndex]}`);
+          textureIndex++;
+          loadEarthTexture();
+        }
+      );
+      
+      return earthTexture;
+    };
+    
+    const earthTexture = loadEarthTexture();
+    
+    // Fallback procedural texture function
+    const createFallbackTexture = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2048;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d')!;
+      
+      // Ocean color (dark blue)
+      ctx.fillStyle = '#0f1419';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Continents (approximate shapes)
+      ctx.fillStyle = '#2d4a3a';
+      
+      // North America
+      ctx.fillRect(200, 200, 400, 300);
+      ctx.fillRect(150, 250, 200, 200);
+      
+      // South America
+      ctx.fillRect(400, 500, 200, 400);
+      
+      // Europe
+      ctx.fillRect(900, 150, 200, 200);
+      
+      // Africa
+      ctx.fillRect(950, 300, 250, 500);
+      
+      // Asia
+      ctx.fillRect(1100, 100, 600, 400);
+      
+      // Australia
+      ctx.fillRect(1500, 600, 200, 150);
+      
+      // Add grid lines for lat/lng
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.1;
+      
+      // Latitude lines
+      for (let i = 0; i <= 8; i++) {
+        const y = (canvas.height / 8) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+      
+      // Longitude lines
+      for (let i = 0; i <= 16; i++) {
+        const x = (canvas.width / 16) * i;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      
+      ctx.globalAlpha = 1;
+      
+      const fallbackTexture = new THREE.CanvasTexture(canvas);
+      fallbackTexture.wrapS = THREE.RepeatWrapping;
+      fallbackTexture.wrapT = THREE.RepeatWrapping;
+      
+      globeMaterial.map = fallbackTexture;
+      globeMaterial.needsUpdate = true;
+    };
+    
     const globeMaterial = new THREE.MeshPhongMaterial({
-      color: 0x2563eb,
+      map: earthTexture,
       transparent: true,
-      opacity: 0.8,
-      wireframe: false,
+      opacity: 0.9,
+      shininess: 100,
     });
+    
     const globe = new THREE.Mesh(globeGeometry, globeMaterial);
     scene.add(globe);
     globeRef.current = globe;
+    
+    // Add night lights texture as an overlay
+    const nightTextureUrls = [
+      'https://unpkg.com/three-globe/example/img/earth-night.jpg',
+      'https://threejs.org/examples/textures/planets/earth_lights_2048.png'
+    ];
+    
+    let nightTextureIndex = 0;
+    
+    const loadNightTexture = () => {
+      if (nightTextureIndex >= nightTextureUrls.length) {
+        return; // Skip night lights if not available
+      }
+      
+      textureLoader.load(
+        nightTextureUrls[nightTextureIndex],
+        // onLoad callback
+        (nightTexture) => {
+          console.log(`Night lights texture loaded from: ${nightTextureUrls[nightTextureIndex]}`);
+          
+          // Create night lights overlay
+          const nightGeometry = new THREE.SphereGeometry(5.002, 64, 64);
+          const nightMaterial = new THREE.MeshBasicMaterial({
+            map: nightTexture,
+            transparent: true,
+            opacity: 0.1,
+            blending: THREE.AdditiveBlending,
+          });
+          
+          const nightLights = new THREE.Mesh(nightGeometry, nightMaterial);
+          scene.add(nightLights);
+          
+          // Add to rotation group (you'll need to handle this in mouse controls)
+          globe.userData.nightLights = nightLights;
+        },
+        // onProgress callback
+        undefined,
+        // onError callback
+        () => {
+          nightTextureIndex++;
+          loadNightTexture();
+        }
+      );
+    };
+    
+    loadNightTexture();
 
     // Add wireframe overlay
     const wireframeGeometry = new THREE.SphereGeometry(5.01, 32, 32);
@@ -90,10 +247,35 @@ const NetworkGlobe = ({ hops, isTracing, targetHost }: NetworkGlobeProps) => {
       color: 0x00bfff,
       wireframe: true,
       transparent: true,
-      opacity: 0.3,
+      opacity: 0.2,
     });
     const wireframe = new THREE.Mesh(wireframeGeometry, wireframeMaterial);
     scene.add(wireframe);
+
+    // Add atmosphere effect
+    const atmosphereGeometry = new THREE.SphereGeometry(5.3, 32, 32);
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+      uniforms: {},
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.8 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
+          gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity;
+        }
+      `,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      transparent: true,
+    });
+    const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    scene.add(atmosphere);
 
     // Lighting
     const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
@@ -129,8 +311,17 @@ const NetworkGlobe = ({ hops, isTracing, targetHost }: NetworkGlobeProps) => {
 
         globe.rotation.y += deltaMove.x * 0.005;
         globe.rotation.x += deltaMove.y * 0.005;
+        
+        // Rotate night lights if available
+        if (globe.userData.nightLights) {
+          globe.userData.nightLights.rotation.y += deltaMove.x * 0.005;
+          globe.userData.nightLights.rotation.x += deltaMove.y * 0.005;
+        }
+        
         wireframe.rotation.y += deltaMove.x * 0.005;
         wireframe.rotation.x += deltaMove.y * 0.005;
+        atmosphere.rotation.y += deltaMove.x * 0.005;
+        atmosphere.rotation.x += deltaMove.y * 0.005;
         hopMarkers.rotation.y += deltaMove.x * 0.005;
         hopMarkers.rotation.x += deltaMove.y * 0.005;
         routeLines.rotation.y += deltaMove.x * 0.005;
@@ -161,7 +352,14 @@ const NetworkGlobe = ({ hops, isTracing, targetHost }: NetworkGlobeProps) => {
       // Auto-rotate when not dragging
       if (!isDragging) {
         globe.rotation.y += 0.002;
+        
+        // Rotate night lights if available
+        if (globe.userData.nightLights) {
+          globe.userData.nightLights.rotation.y += 0.002;
+        }
+        
         wireframe.rotation.y += 0.002;
+        atmosphere.rotation.y += 0.001;
         hopMarkers.rotation.y += 0.002;
         routeLines.rotation.y += 0.002;
       }
@@ -217,18 +415,33 @@ const NetworkGlobe = ({ hops, isTracing, targetHost }: NetworkGlobeProps) => {
       // Create hop marker
       const markerGeometry = new THREE.SphereGeometry(0.08, 16, 16);
       const markerMaterial = new THREE.MeshBasicMaterial({
-        color: index === 0 ? 0x00ff7f : index === hops.length - 1 ? 0xff0040 : 0x00bfff,
+        color: index === 0 ? 0x00ff7f : index === hops.length - 1 ? 0xff0040 : 0xffff00,
         transparent: true,
         opacity: 0.9,
       });
       const marker = new THREE.Mesh(markerGeometry, markerMaterial);
       marker.position.copy(position);
       
+      // Add a glowing ring around the marker
+      const ringGeometry = new THREE.RingGeometry(0.1, 0.15, 16);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: index === 0 ? 0x00ff7f : index === hops.length - 1 ? 0xff0040 : 0xffff00,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+      });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.position.copy(position);
+      ring.lookAt(new THREE.Vector3(0, 0, 0));
+      
       // Add pulsing animation
-      const scale = 1 + Math.sin(Date.now() * 0.01 + index) * 0.3;
+      const time = Date.now() * 0.01;
+      const scale = 1 + Math.sin(time + index) * 0.3;
       marker.scale.setScalar(scale);
+      ring.scale.setScalar(scale * 1.2);
       
       hopMarkersRef.current?.add(marker);
+      hopMarkersRef.current?.add(ring);
 
       // Create route line to next hop
       if (index < hops.length - 1 && hops[index + 1].location) {
