@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Network Traceroute Design System - Dark theme with neon aesthetics */
+
+@layer base {
+  :root {
+    /* Dark network theme */
+    --background: 220 25% 8%;
+    --foreground: 210 40% 98%;
+
+    --card: 220 25% 10%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 220 25% 10%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Cyber blue primary */
+    --primary: 200 100% 60%;
+    --primary-foreground: 220 25% 8%;
+
+    /* Electric purple secondary */
+    --secondary: 280 100% 70%;
+    --secondary-foreground: 220 25% 8%;
+
+    --muted: 220 25% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    /* Neon green accent */
+    --accent: 120 100% 50%;
+    --accent-foreground: 220 25% 8%;
+
+    /* Warning red */
+    --destructive: 0 100% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 25% 20%;
+    --input: 220 25% 15%;
+    --ring: 200 100% 60%;
+
+    /* Network-specific colors */
+    --network-pulse: 200 100% 60%;
+    --network-glow: 120 100% 50%;
+    --network-trace: 280 100% 70%;
+    --network-node: 50 100% 60%;
+    
+    /* Gradients */
+    --gradient-cyber: linear-gradient(135deg, hsl(200 100% 60%), hsl(280 100% 70%));
+    --gradient-network: linear-gradient(90deg, hsl(200 100% 60%), hsl(120 100% 50%));
+    --gradient-pulse: radial-gradient(circle, hsl(200 100% 60% / 0.3), transparent);
+    
+    /* Shadows */
+    --shadow-glow: 0 0 20px hsl(200 100% 60% / 0.5);
+    --shadow-neon: 0 0 40px hsl(120 100% 50% / 0.3);
+    
+    /* Animations */
+    --transition-cyber: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-mono;
+  }
+}
+
+@layer components {
+  /* Cyber animations */
+  @keyframes pulse-glow {
+    0%, 100% { 
+      box-shadow: 0 0 20px hsl(var(--network-pulse) / 0.5);
+    }
+    50% { 
+      box-shadow: 0 0 40px hsl(var(--network-pulse) / 0.8);
+    }
+  }
+  
+  @keyframes trace-line {
+    0% { 
+      transform: scaleX(0);
+      opacity: 0;
+    }
+    50% {
+      opacity: 1;
+    }
+    100% { 
+      transform: scaleX(1);
+      opacity: 0.7;
+    }
+  }
+  
+  @keyframes network-pulse {
+    0%, 100% { 
+      transform: scale(1);
+      opacity: 0.8;
+    }
+    50% { 
+      transform: scale(1.1);
+      opacity: 1;
+    }
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  
+  .animate-trace-line {
+    animation: trace-line 1.5s ease-out forwards;
+  }
+  
+  .animate-network-pulse {
+    animation: network-pulse 2s ease-in-out infinite;
+  }
+
+  /* Gradient text effects */
+  .text-gradient-cyber {
+    background: var(--gradient-cyber);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .text-gradient-network {
+    background: var(--gradient-network);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Glowing borders */
+  .border-glow {
+    border: 1px solid hsl(var(--network-pulse));
+    box-shadow: 0 0 10px hsl(var(--network-pulse) / 0.3);
+  }
+  
+  .border-glow-accent {
+    border: 1px solid hsl(var(--network-glow));
+    box-shadow: 0 0 10px hsl(var(--network-glow) / 0.3);
+  }
+}
