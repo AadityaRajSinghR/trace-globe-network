@@ -10,10 +10,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: FRONTEND_URL
-        value: https://your-frontend-url.onrender.com
+        value: https://traceroute-frontend.onrender.com
     
   # Frontend Static Site
   - type: web
