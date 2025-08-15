@@ -16,6 +16,7 @@ interface Hop {
   hostname: string;
   latency: number;
   location?: Location;
+  isPrivate?: boolean;
 }
 
 interface NetworkGlobeProps {

@@ -15,6 +15,7 @@ interface Hop {
   hostname: string;
   latency: number;
   location?: Location;
+  isPrivate?: boolean;
 }
 
 interface HopsListProps {
@@ -91,6 +92,15 @@ const HopsList = ({ hops, isTracing, currentHop }: HopsListProps) => {
                 <MapPin className="w-3 h-3 text-accent" />
                 <span className="text-xs text-foreground">
                   {hop.location.city}, {hop.location.country}
+                </span>
+              </div>
+            )}
+            
+            {hop.isPrivate && (
+              <div className="flex items-center gap-2 mb-2">
+                <Server className="w-3 h-3 text-orange-500" />
+                <span className="text-xs text-orange-300">
+                  Private Network
                 </span>
               </div>
             )}

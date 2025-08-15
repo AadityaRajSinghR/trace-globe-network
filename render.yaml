@@ -21,4 +21,4 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_SERVER_URL
-        value: https://traceroute-backend.onrender.com
+        value: https://traceroute-backend-cp1e.onrender.com

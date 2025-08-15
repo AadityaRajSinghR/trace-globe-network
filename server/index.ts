@@ -140,9 +140,57 @@ app.get('/api/test-location/:ip', rateLimitMiddleware, async (req, res) => {
   }
 });
 
+// Alternative HTTP-based traceroute for environments without traceroute command
+app.post('/api/http-traceroute', rateLimitMiddleware, async (req, res) => {
+  try {
+    const { target } = req.body;
+    if (!target) {
+      return res.status(400).json({ error: 'Target host is required' });
+    }
+
+    console.log(`HTTP traceroute to: ${target}`);
+
+    // Try to resolve target and get basic info
+    const dns = await import('dns');
+    const { promisify } = await import('util');
+    const lookup = promisify(dns.lookup);
+    
+    const hops: Hop[] = [];
+    
+    try {
+      const result = await lookup(target);
+      const targetIp = result.address;
+      
+      // Get location for target
+      const location = await getIpLocation(targetIp);
+      
+      hops.push({
+        ip: targetIp,
+        hostname: target,
+        latency: 0,
+        location
+      });
+      
+    } catch (error) {
+      console.error('DNS lookup failed:', error);
+      return res.status(400).json({ error: 'Unable to resolve target hostname' });
+    }
+
+    res.json({ hops });
+  } catch (error) {
+    console.error('HTTP traceroute error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    platform: process.platform,
+    traceroute: process.platform === 'win32' ? 'tracert' : 'traceroute/fallback'
+  });
 });
 
 // Socket.IO connection handling
@@ -164,23 +212,58 @@ io.on('connection', (socket) => {
       // Emit start event
       socket.emit('traceroute-started', { target });
 
+      // Validate target
+      if (!target || target.trim().length === 0) {
+        throw new Error('Invalid target hostname or IP');
+      }
+
+      const cleanTarget = target.trim();
+      
       // Determine OS and use appropriate command
       const isWindows = process.platform === 'win32';
-      const command = isWindows ? 'tracert' : 'traceroute';
-      const args = isWindows ? ['-h', '30', target] : ['-m', '30', target];
+      let command: string;
+      let args: string[];
+
+      if (isWindows) {
+        command = 'tracert';
+        args = ['-4', '-h', '30', cleanTarget]; // Force IPv4
+      } else {
+        // For Linux (Render), try different traceroute commands
+        // Most Linux systems have traceroute, but some containers might not
+        command = 'sh';
+        args = ['-c', `command -v traceroute >/dev/null 2>&1 && traceroute -4 -m 30 ${cleanTarget} || (command -v tracepath >/dev/null 2>&1 && tracepath ${cleanTarget}) || echo "No traceroute command available"`];
+      }
 
       console.log(`Executing: ${command} ${args.join(' ')}`);
 
       // Use spawn to get real-time output
       currentTraceroute = spawn(command, args, { 
         stdio: ['ignore', 'pipe', 'pipe'],
-        shell: false 
+        shell: isWindows,
+        env: { ...process.env, PATH: process.env.PATH }
       });
 
       let hopCount = 0;
       let buffer = '';
+      let hasOutput = false;
+
+      // Set a timeout to detect if command doesn't exist
+      const commandTimeout = setTimeout(() => {
+        if (!hasOutput) {
+          console.error('No output received from traceroute command - likely not available');
+          socket.emit('traceroute-error', { 
+            error: 'Traceroute command not available on this system. Using fallback method...' 
+          });
+          
+          // Try fallback method
+          startFallbackTraceroute(cleanTarget, socket);
+        }
+      }, 5000);
 
       currentTraceroute.stdout.on('data', async (data: any) => {
+        hasOutput = true;
+        clearTimeout(commandTimeout);
+        
         buffer += data.toString();
         const lines = buffer.split('\n');
         
@@ -193,25 +276,51 @@ io.on('connection', (socket) => {
       });
 
       currentTraceroute.stderr.on('data', (data: any) => {
+        hasOutput = true;
+        clearTimeout(commandTimeout);
+        
         const errorOutput = data.toString();
         console.error(`Traceroute stderr: ${errorOutput}`);
         
-        // Don't emit error for common Windows tracert messages
-        if (!errorOutput.includes('Tracing route') && !errorOutput.includes('over a maximum')) {
+        // Check for command not found errors
+        if (errorOutput.includes('command not found') || errorOutput.includes('not recognized')) {
+          console.log('Traceroute command not found, trying fallback method');
+          socket.emit('traceroute-error', { 
+            error: 'Standard traceroute not available. Using alternative method...' 
+          });
+          startFallbackTraceroute(cleanTarget, socket);
+          return;
+        }
+        
+        // Don't emit error for common tracert messages
+        if (!errorOutput.includes('Tracing route') && 
+            !errorOutput.includes('over a maximum') && 
+            !errorOutput.includes('Usage:')) {
           socket.emit('traceroute-error', { error: errorOutput });
         }
       });
 
       currentTraceroute.on('close', (code: any) => {
+        clearTimeout(commandTimeout);
         console.log(`Traceroute process exited with code: ${code} for client ${socket.id}`);
         currentTraceroute = null;
         socket.emit('traceroute-completed', { hopCount });
       });
 
       currentTraceroute.on('error', (error: any) => {
+        clearTimeout(commandTimeout);
         console.error('Traceroute process error:', error);
         currentTraceroute = null;
-        socket.emit('traceroute-error', { error: error.message });
+        
+        if (error.code === 'ENOENT') {
+          console.log('Traceroute command not found, trying fallback method');
+          socket.emit('traceroute-error', { 
+            error: 'Traceroute command not available. Trying alternative method...' 
+          });
+          startFallbackTraceroute(cleanTarget, socket);
+        } else {
+          socket.emit('traceroute-error', { error: error.message });
+        }
       });
 
     } catch (error) {
@@ -241,7 +350,66 @@ io.on('connection', (socket) => {
   });
 });
 
-// Function to process individual traceroute lines
+// Fallback traceroute using ping or HTTP method
+async function startFallbackTraceroute(target: string, socket: any) {
+  console.log(`Starting fallback traceroute to: ${target}`);
+  
+  try {
+    // For environments without traceroute, we'll simulate it using DNS lookups
+    // and some common gateway detection
+    socket.emit('traceroute-started', { target });
+    
+    // First, try to resolve the target
+    const dns = await import('dns');
+    const { promisify } = await import('util');
+    const lookup = promisify(dns.lookup);
+    
+    try {
+      const result = await lookup(target);
+      const targetIp = result.address;
+      console.log(`Resolved ${target} to ${targetIp}`);
+      
+      // Add the target as the final hop
+      socket.emit('hop-discovered', {
+        hopNumber: 1,
+        ip: targetIp,
+        hostname: target,
+        latency: 50, // Simulated latency
+        location: null
+      });
+      
+      // Try to get location for the target IP
+      try {
+        const location = await getIpLocation(targetIp);
+        if (location) {
+          socket.emit('hop-location-updated', {
+            hopNumber: 1,
+            ip: targetIp,
+            hostname: target,
+            latency: 50,
+            location
+          });
+        }
+      } catch (error) {
+        console.error(`Error getting location for ${targetIp}:`, error);
+      }
+      
+      socket.emit('traceroute-completed', { hopCount: 1 });
+      
+    } catch (error) {
+      console.error('DNS lookup failed:', error);
+      socket.emit('traceroute-error', { 
+        error: 'Unable to resolve hostname and traceroute is not available on this system' 
+      });
+    }
+    
+  } catch (error) {
+    console.error('Fallback traceroute failed:', error);
+    socket.emit('traceroute-error', { 
+      error: 'Traceroute functionality is not available on this system' 
+    });
+  }
+}
 async function processTracerouteLine(line: string, socket: any, hopCount: number) {
   if (!line || line.includes('Tracing route') || 
       line.includes('over a maximum') || line.includes('Trace complete') ||
@@ -258,20 +426,43 @@ async function processTracerouteLine(line: string, socket: any, hopCount: number
 
     const hopNumber = parseInt(hopMatch[1]);
 
-    // Extract IP addresses from the line - look for IPv4 patterns
-    const ipMatches = line.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g);
+    // Extract IP addresses from the line - prefer IPv4 over IPv6
+    let ipMatches = line.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g); // IPv4
+    
+    if (!ipMatches || ipMatches.length === 0) {
+      // Try IPv6 if no IPv4 found
+      ipMatches = line.match(/([0-9a-fA-F:]+:+[0-9a-fA-F:]*)/g);
+    }
+    
     if (!ipMatches || ipMatches.length === 0) {
       console.log(`No valid IP found in line: ${line}`);
+      
+      // Check if line contains asterisks (timeouts)
+      if (line.includes('*')) {
+        socket.emit('hop-discovered', {
+          hopNumber,
+          ip: '*',
+          hostname: 'Request timed out',
+          latency: 0,
+          location: null
+        });
+      }
       return;
     }
 
     const ip = ipMatches[0];
     console.log(`Found hop ${hopNumber}: ${ip}`);
 
-    // Skip private IPs and localhost
-    if (isPrivateIP(ip)) {
-      console.log(`Skipping private IP: ${ip}`);
+    // Skip IPv6 for now (geolocation APIs work better with IPv4)
+    if (ip.includes(':')) {
+      console.log(`Skipping IPv6 IP: ${ip}`);
       return;
+    }
+
+    // For private IPs, we'll show them but won't geolocate
+    const isPrivate = isPrivateIP(ip);
+    if (isPrivate) {
+      console.log(`Private IP detected: ${ip} - will show but not geolocate`);
     }
 
     // Extract latency - look for first number followed by 'ms'
@@ -291,27 +482,32 @@ async function processTracerouteLine(line: string, socket: any, hopCount: number
       ip,
       hostname,
       latency,
-      location: null
+      location: null,
+      isPrivate
     });
 
-    // Get location data asynchronously with timeout
-    try {
-      const location = await Promise.race([
-        getIpLocation(ip),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
-      ]);
+    // Only try to get location for public IPs
+    if (!isPrivate) {
+      // Get location data asynchronously with timeout
+      try {
+        const location = await Promise.race([
+          getIpLocation(ip),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+        ]);
 
-      if (location) {
-        socket.emit('hop-location-updated', {
-          hopNumber,
-          ip,
-          hostname,
-          latency,
-          location
-        });
+        if (location) {
+          socket.emit('hop-location-updated', {
+            hopNumber,
+            ip,
+            hostname,
+            latency,
+            location,
+            isPrivate
+          });
+        }
+      } catch (error) {
+        console.error(`Error getting location for ${ip}:`, error);
       }
-    } catch (error) {
-      console.error(`Error getting location for ${ip}:`, error);
     }
 
   } catch (error) {

@@ -29,6 +29,24 @@ export const useSocket = ({
   onTracerouteError,
 }: UseSocketProps) => {
   const socketRef = useRef<Socket | null>(null);
+  const callbacksRef = useRef({
+    onHopDiscovered,
+    onHopLocationUpdated,
+    onTracerouteStarted,
+    onTracerouteCompleted,
+    onTracerouteError,
+  });
+
+  // Update callbacks ref when they change
+  useEffect(() => {
+    callbacksRef.current = {
+      onHopDiscovered,
+      onHopLocationUpdated,
+      onTracerouteStarted,
+      onTracerouteCompleted,
+      onTracerouteError,
+    };
+  }, [onHopDiscovered, onHopLocationUpdated, onTracerouteStarted, onTracerouteCompleted, onTracerouteError]);
 
   useEffect(() => {
     // Initialize socket connection
@@ -46,17 +64,17 @@ export const useSocket = ({
       console.log('Disconnected from server');
     });
 
-    socket.on('traceroute-started', onTracerouteStarted);
-    socket.on('hop-discovered', onHopDiscovered);
-    socket.on('hop-location-updated', onHopLocationUpdated);
-    socket.on('traceroute-completed', onTracerouteCompleted);
-    socket.on('traceroute-error', onTracerouteError);
+    socket.on('traceroute-started', (data) => callbacksRef.current.onTracerouteStarted(data));
+    socket.on('hop-discovered', (data) => callbacksRef.current.onHopDiscovered(data));
+    socket.on('hop-location-updated', (data) => callbacksRef.current.onHopLocationUpdated(data));
+    socket.on('traceroute-completed', (data) => callbacksRef.current.onTracerouteCompleted(data));
+    socket.on('traceroute-error', (data) => callbacksRef.current.onTracerouteError(data));
 
     // Cleanup on unmount
     return () => {
       socket.disconnect();
     };
-  }, [onHopDiscovered, onHopLocationUpdated, onTracerouteStarted, onTracerouteCompleted, onTracerouteError]);
+  }, []); // Remove callback dependencies to prevent reconnections
 
   const startTraceroute = (target: string) => {
     if (socketRef.current) {

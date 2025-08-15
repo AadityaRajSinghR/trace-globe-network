@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import TracerouteInput from "@/components/TracerouteInput";
 import NetworkGlobe from "@/components/NetworkGlobe";
 import HopsList from "@/components/HopsList";
@@ -28,7 +28,7 @@ const Index = () => {
   const { toast } = useToast();
 
   // Socket.IO event handlers
-  const handleHopDiscovered = (hopData: Hop & { hopNumber: number }) => {
+  const handleHopDiscovered = useCallback((hopData: Hop & { hopNumber: number }) => {
     console.log('Hop discovered:', hopData);
     setHops(prev => {
       const newHops = [...prev];
@@ -43,9 +43,9 @@ const Index = () => {
       return newHops.sort((a: any, b: any) => (a.hopNumber || 0) - (b.hopNumber || 0));
     });
     setCurrentHop(hopData.hopNumber);
-  };
+  }, []);
 
-  const handleHopLocationUpdated = (hopData: Hop & { hopNumber: number }) => {
+  const handleHopLocationUpdated = useCallback((hopData: Hop & { hopNumber: number }) => {
     console.log('Hop location updated:', hopData);
     setHops(prev => {
       const newHops = [...prev];
@@ -62,13 +62,13 @@ const Index = () => {
       title: "Location Found",
       description: `${hopData.location?.city}, ${hopData.location?.country}`,
     });
-  };
+  }, [toast]);
 
-  const handleTracerouteStarted = (data: { target: string }) => {
+  const handleTracerouteStarted = useCallback((data: { target: string }) => {
     console.log('Traceroute started:', data);
-  };
+  }, []);
 
-  const handleTracerouteCompleted = (data: { hopCount: number }) => {
+  const handleTracerouteCompleted = useCallback((data: { hopCount: number }) => {
     console.log('Traceroute completed:', data);
     setIsTracing(false);
     setCurrentHop(0);
@@ -77,9 +77,9 @@ const Index = () => {
       title: "Traceroute Complete",
       description: `Found ${data.hopCount} hops to ${targetHost}`,
     });
-  };
+  }, [targetHost, toast]);
 
-  const handleTracerouteError = (data: { error: string }) => {
+  const handleTracerouteError = useCallback((data: { error: string }) => {
     console.error('Traceroute error:', data);
     setIsTracing(false);
     setCurrentHop(0);
@@ -89,7 +89,7 @@ const Index = () => {
       description: `Traceroute failed: ${data.error}`,
       variant: "destructive",
     });
-  };
+  }, [toast]);
 
   const { startTraceroute, stopTraceroute, isConnected } = useSocket({
     onHopDiscovered: handleHopDiscovered,
